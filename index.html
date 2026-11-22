@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ぷゆゆライフゲーム</title>
+<meta name="description" content="生きているマスがぜんぶ「ぷゆゆ」のライフゲーム。年齢で 🥹→🥺→😭→💀 と変化します。">
+<meta name="theme-color" content="#111111">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%23ffd60a'/><text x='50' y='54' font-size='70' text-anchor='middle' dominant-baseline='middle'>🥺</text></svg>">
+<style>
+  :root {
+    --bg: #111111;
+    --surface: #1b1b1b;
+    --surface-2: #262626;
+    --surface-3: #333333;
+    --board: #161616;
+    --grid: #232323;
+    --text: #f4f4f4;
+    --muted: #9b9b9b;
+    --yellow: #ffd60a;
+    --yellow-hover: #ffe14d;
+    --on-yellow: #111111;
+    /* stage colors (graph / legend) */
+    --s1: #fff1a8;
+    --s2: #ffd60a;
+    --s3: #ff9f1c;
+    --s4: #6e6e6e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .app {
+    max-width: 1440px; margin: 0 auto; padding: 16px;
+    display: flex; flex-direction: column; gap: 12px; min-height: 100vh;
+  }
+
+  /* header */
+  .top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+  h1 { margin: 0; font-size: 1.3rem; font-weight: 800; display: flex; align-items: center; gap: 10px; letter-spacing: .02em; }
+  .logo {
+    display: grid; place-items: center; width: 40px; height: 40px;
+    background: var(--yellow); border-radius: 8px; font-size: 24px; line-height: 1;
+  }
+  .stats { display: flex; gap: 8px; }
+  .stat { background: var(--surface); padding: 6px 14px; border-radius: 6px; min-width: 104px; }
+  .stat .k { display: block; font-size: .7rem; color: var(--muted); }
+  .stat .v { display: block; font-size: 1.25rem; font-weight: 800; color: var(--yellow); font-variant-numeric: tabular-nums; }
+
+  /* controls */
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    background: var(--surface); padding: 10px; border-radius: 8px;
+  }
+  button, select {
+    font: inherit; font-size: .88rem; font-weight: 700;
+    border: 0; border-radius: 6px; padding: 8px 14px;
+    background: var(--surface-2); color: var(--text); cursor: pointer;
+  }
+  button:hover, select:hover { background: var(--surface-3); }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
+  button.primary { background: var(--yellow); color: var(--on-yellow); min-width: 7em; }
+  button.primary:hover { background: var(--yellow-hover); }
+  .spacer { flex: 1; }
+  .range { display: flex; align-items: center; gap: 8px; font-size: .8rem; color: var(--muted); }
+  .range output { min-width: 3.5em; color: var(--text); font-variant-numeric: tabular-nums; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 96px; height: 20px; background: transparent; cursor: pointer; }
+  input[type=range]::-webkit-slider-runnable-track { height: 4px; background: var(--surface-3); border-radius: 2px; }
+  input[type=range]::-moz-range-track { height: 4px; background: var(--surface-3); border-radius: 2px; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 3px; background: var(--yellow); border: 0; }
+  input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 3px; background: var(--yellow); border: 0; }
+
+  /* layout */
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; flex: 1; align-items: start; }
+  @media (min-width: 960px) { .layout { grid-template-columns: minmax(0, 1fr) 300px; } }
+  .board-wrap { min-width: 0; overflow: hidden; display: flex; justify-content: center; }
+  .board { position: relative; border-radius: 6px; overflow: hidden; background: var(--board); }
+  .board canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #fg { touch-action: none; cursor: crosshair; }
+
+  .side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .card { background: var(--surface); border-radius: 8px; padding: 14px; }
+  .card h2 { margin: 0 0 10px; font-size: .8rem; font-weight: 800; color: var(--yellow); letter-spacing: .08em; display: flex; justify-content: space-between; }
+  .card h2 small { color: var(--muted); font-weight: 600; letter-spacing: 0; }
+  #chart { width: 100%; height: 140px; display: block; border-radius: 4px; }
+
+  .legend { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .legend li { display: flex; align-items: center; gap: 6px; background: var(--surface-2); border-radius: 4px; padding: 6px 8px; min-width: 0; }
+  .legend .sw { width: 4px; align-self: stretch; border-radius: 2px; flex: none; }
+  .legend .em { font-size: 1.15rem; line-height: 1; }
+  .legend .age { color: var(--muted); font-size: .68rem; white-space: nowrap; }
+  .legend .n { margin-left: auto; font-weight: 800; font-size: .85rem; font-variant-numeric: tabular-nums; }
+
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .presets button { padding: 6px 10px; font-size: .78rem; display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1 1 calc(50% - 6px); }
+  .presets button .e { font-size: 1rem; letter-spacing: .1em; }
+  .presets button.active { background: var(--yellow); color: var(--on-yellow); }
+  .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .slot { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .slot .bar { height: 4px; border-radius: 2px; }
+  .slot input {
+    width: 100%; font: inherit; font-size: 1.6rem; text-align: center; padding: 6px 0;
+    background: var(--surface-2); color: var(--text); border: 0; border-radius: 6px;
+  }
+  .slot input:focus { outline: 2px solid var(--yellow); outline-offset: 0; }
+  .slot span { font-size: .66rem; color: var(--muted); text-align: center; white-space: nowrap; }
+  .note { margin: 10px 0 0; font-size: .7rem; color: var(--muted); line-height: 1.5; }
+
+  .hint { color: var(--muted); font-size: .75rem; text-align: center; margin: 0; }
+  kbd { background: var(--surface-2); border-radius: 3px; padding: 0 5px; font: inherit; color: var(--text); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1><span class="logo" id="logo">🥺</span>ぷゆゆライフゲーム</h1>
+    <div class="stats">
+      <div class="stat"><span class="k">世代</span><span class="v" id="gen">0</span></div>
+      <div class="stat"><span class="k">ぷゆゆ口</span><span class="v" id="pop">0</span></div>
+    </div>
+  </header>
+
+  <div class="controls">
+    <button id="play" class="primary">▶ 再生</button>
+    <button id="step">1世代すすむ</button>
+    <button id="random">ランダム</button>
+    <button id="clear">クリア</button>
+    <select id="pattern" aria-label="パターンを置く">
+      <option value="">パターンを置く…</option>
+      <option value="glider">グライダー</option>
+      <option value="lwss">軽量級宇宙船</option>
+      <option value="pulsar">パルサー</option>
+      <option value="gun">グライダー銃</option>
+      <option value="rpent">R-ペントミノ</option>
+      <option value="acorn">どんぐり</option>
+    </select>
+    <span class="spacer"></span>
+    <label class="range">速さ <input id="speed" type="range" min="1" max="60" value="10"><output id="speedOut">10/秒</output></label>
+    <label class="range">大きさ <input id="size" type="range" min="12" max="48" value="22"><output id="sizeOut">22px</output></label>
+  </div>
+
+  <main class="layout">
+    <section class="board-wrap" id="boardWrap">
+      <div class="board" id="board">
+        <canvas id="bg"></canvas>
+        <canvas id="fg"></canvas>
+      </div>
+    </section>
+
+    <aside class="side">
+      <section class="card">
+        <h2>ぷゆゆ口グラフ <small>直近360世代</small></h2>
+        <canvas id="chart" aria-label="ぷゆゆ口の推移グラフ" role="img"></canvas>
+        <ul class="legend" id="legend"></ul>
+      </section>
+      <section class="card">
+        <h2>着せ替え</h2>
+        <div class="presets" id="presets"></div>
+        <div class="slots" id="slots"></div>
+        <p class="note">ぷゆゆは年をとると見た目が変わります。💀になっても、まわりの条件がそろえば生き続けます。マスをタップして好きな絵文字に変えられます。</p>
+      </section>
+    </aside>
+  </main>
+
+  <p class="hint">マスをクリック・ドラッグで置く／消す ・ <kbd>Space</kbd> 再生／停止 ・ <kbd>→</kbd> 1世代すすむ ・ 盤面の端はつながっています</p>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+  const wrap = $('boardWrap'), board = $('board');
+  const bgCanvas = $('bg'), fgCanvas = $('fg'), chart = $('chart');
+  const bctx = bgCanvas.getContext('2d');
+  const fctx = fgCanvas.getContext('2d');
+  const cctx = chart.getContext('2d');
+
+  // ---------- Stages (age → look) ----------
+  // A cell's age is how many generations in a row it has been alive (capped at 255).
+  const STAGE_START = [1, 4, 16, 50];
+  const STAGE_LABEL = ['1〜3世代', '4〜15世代', '16〜49世代', '50世代〜'];
+  const STAGE_COLOR = [1, 2, 3, 4].map(k => css('--s' + k));
+  const AGE_CAP = 255;
+  const stageOf = new Uint8Array(AGE_CAP + 1); // 0 = dead, 1..4 = stage
+  for (let a = 1; a <= AGE_CAP; a++) {
+    let s = 0;
+    for (let k = 0; k < 4; k++) if (a >= STAGE_START[k]) s = k + 1;
+    stageOf[a] = s;
+  }
+
+  // ---------- Skins ----------
+  const DEFAULT_SKIN = ['🥹', '🥺', '😭', '💀'];
+  const PRESETS = [
+    { name: 'ぷゆゆ', skin: DEFAULT_SKIN },
+    { name: 'ひよこ', skin: ['🥚', '🐣', '🐥', '🐔'] },
+    { name: 'しょくぶつ', skin: ['🌱', '🌿', '🌳', '🪵'] },
+    { name: 'ねこ', skin: ['😺', '😸', '😿', '🙀'] },
+  ];
+  const SKIN_KEY = 'puyuyu-life-skin';
+  function loadSkin() {
+    try {
+      const v = JSON.parse(localStorage.getItem(SKIN_KEY));
+      if (Array.isArray(v) && v.length === 4 && v.every(s => typeof s === 'string' && s)) return v;
+    } catch (e) { /* storage unavailable */ }
+    return DEFAULT_SKIN.slice();
+  }
+  function saveSkin() {
+    try { localStorage.setItem(SKIN_KEY, JSON.stringify(skin)); } catch (e) { /* ignore */ }
+  }
+  const segmenter = (typeof Intl !== 'undefined' && Intl.Segmenter) ? new Intl.Segmenter('ja', { granularity: 'grapheme' }) : null;
+  function firstGrapheme(s) {
+    s = s.trim();
+    if (!s) return '';
+    if (segmenter) for (const { segment } of segmenter.segment(s)) return segment;
+    return Array.from(s)[0];
+  }
+
+  // ---------- State ----------
+  let cellCss = +$('size').value;   // requested cell size in CSS px
+  let dpr = 1, cp = 1;              // cp = cell size in device px (integer → crisp, no seams)
+  let cols = 0, rows = 0, N = 0;
+  let cur = new Uint8Array(0);      // 0/1 alive, current generation
+  let nxt = new Uint8Array(0);      // double buffer (no allocation per step)
+  let age = new Uint8Array(0);
+  let colSum = new Uint8Array(0);   // vertical 3-cell sums for the current row
+  let dirty = new Int32Array(0), dirtyFlag = new Uint8Array(0), dirtyLen = 0;
+  let fullRedraw = true;
+  const counts = new Int32Array(5); // per stage, index 0 = dead
+  let gen = 0, running = false, speed = +$('speed').value;
+  let skin = loadSkin();
+  let atlas = null;
+
+  // ---------- Population history (ring buffer) ----------
+  const HIST = 360;
+  const hist = new Uint32Array(HIST * 4);
+  let histLen = 0, histHead = 0, chartDirty = true;
+  function histWrite(slot) {
+    const o = slot * 4;
+    for (let k = 0; k < 4; k++) hist[o + k] = counts[k + 1];
+  }
+  function histPush() {
+    histWrite(histHead);
+    histHead = (histHead + 1) % HIST;
+    if (histLen < HIST) histLen++;
+    chartDirty = true;
+  }
+  function histSetLatest() {
+    if (!histLen) return histPush();
+    histWrite((histHead - 1 + HIST) % HIST);
+    chartDirty = true;
+  }
+  function histReset() { histLen = 0; histHead = 0; histPush(); }
+
+  // ---------- Simulation ----------
+  function markDirty(i) {
+    if (!dirtyFlag[i]) { dirtyFlag[i] = 1; dirty[dirtyLen++] = i; }
+  }
+
+  function step() {
+    const c = cols, r = rows, last = c - 1;
+    const C = cur, X = nxt, A = age, S = colSum, st = stageOf, cnt = counts;
+    cnt.fill(0);
+    let up = (r - 1) * c, mid = 0, down = (r > 1 ? 1 : 0) * c;
+    for (let y = 0; y < r; y++) {
+      for (let x = 0; x < c; x++) S[x] = C[up + x] + C[mid + x] + C[down + x];
+      for (let x = 0; x < c; x++) {
+        const i = mid + x;
+        const self = C[i];
+        const n = S[x === 0 ? last : x - 1] + S[x] + S[x === last ? 0 : x + 1] - self;
+        const alive = (n === 3 || (n === 2 && self === 1)) ? 1 : 0;
+        X[i] = alive;
+        const a0 = A[i];
+        const a1 = alive ? (a0 < AGE_CAP ? a0 + 1 : AGE_CAP) : 0;
+        if (a1 !== a0) {
+          A[i] = a1;
+          if (st[a1] !== st[a0] && !dirtyFlag[i]) { dirtyFlag[i] = 1; dirty[dirtyLen++] = i; }
+        }
+        cnt[st[a1]]++;
+      }
+      up = mid; mid = down; down = ((y + 2) % r) * c;
+    }
+    cur = X; nxt = C;
+    gen++;
+  }
+
+  function recount() {
+    counts.fill(0);
+    for (let i = 0; i < N; i++) counts[stageOf[age[i]]]++;
+  }
+
+  function setCell(i, v) {
+    if (cur[i] === v) return;
+    counts[stageOf[age[i]]]--;
+    cur[i] = v;
+    age[i] = v ? 1 : 0;
+    counts[stageOf[age[i]]]++;
+    markDirty(i);
+  }
+
+  // ---------- Rendering ----------
+  function buildAtlas() {
+    const c = document.createElement('canvas');
+    c.width = cp * 4; c.height = cp;
+    const g = c.getContext('2d');
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = `${Math.floor(cp * 0.84)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+    for (let k = 0; k < 4; k++) {
+      g.save();
+      g.beginPath(); g.rect(k * cp, 0, cp, cp); g.clip();
+      g.fillText(skin[k], k * cp + cp / 2, cp / 2 + cp * 0.05);
+      g.restore();
+    }
+    atlas = c;
+  }
+
+  function drawGrid() {
+    const W = bgCanvas.width, H = bgCanvas.height;
+    bctx.fillStyle = css('--board');
+    bctx.fillRect(0, 0, W, H);
+    bctx.fillStyle = css('--grid');
+    const lw = Math.max(1, Math.round(dpr));
+    for (let x = 1; x < cols; x++) bctx.fillRect(x * cp, 0, lw, H);
+    for (let y = 1; y < rows; y++) bctx.fillRect(0, y * cp, W, lw);
+  }
+
+  function render() {
+    const ctx = fctx, s = cp;
+    if (fullRedraw || dirtyLen > (N >> 2)) {
+      ctx.clearRect(0, 0, fgCanvas.width, fgCanvas.height);
+      for (let y = 0, i = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++, i++) {
+          const st = stageOf[age[i]];
+          if (st) ctx.drawImage(atlas, (st - 1) * s, 0, s, s, x * s, y * s, s, s);
+        }
+      }
+      for (let k = 0; k < dirtyLen; k++) dirtyFlag[dirty[k]] = 0;
+      fullRedraw = false;
+    } else {
+      for (let k = 0; k < dirtyLen; k++) {
+        const i = dirty[k];
+        dirtyFlag[i] = 0;
+        const x = (i % cols) * s, y = ((i / cols) | 0) * s;
+        ctx.clearRect(x, y, s, s);
+        const st = stageOf[age[i]];
+        if (st) ctx.drawImage(atlas, (st - 1) * s, 0, s, s, x, y, s, s);
+      }
+    }
+    dirtyLen = 0;
+  }
+
+  function niceMax(v) {
+    if (v <= 10) return 10;
+    const p = Math.pow(10, Math.floor(Math.log10(v)));
+    for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p;
+    return 10 * p;
+  }
+
+  function drawChart() {
+    const r = window.devicePixelRatio || 1;
+    const w = Math.max(1, Math.round(chart.clientWidth * r));
+    const h = Math.max(1, Math.round(chart.clientHeight * r));
+    if (chart.width !== w || chart.height !== h) { chart.width = w; chart.height = h; }
+    const g = cctx;
+    g.fillStyle = css('--board');
+    g.fillRect(0, 0, w, h);
+
+    let max = 0;
+    const start = (histHead - histLen + HIST) % HIST;
+    for (let j = 0; j < histLen; j++) {
+      const o = ((start + j) % HIST) * 4;
+      const t = hist[o] + hist[o + 1] + hist[o + 2] + hist[o + 3];
+      if (t > max) max = t;
+    }
+    const yMax = niceMax(max);
+    const top = Math.round(6 * r), ih = h - top;
+    const xs = w / (HIST - 1);
+
+    // guide lines at 50% and 100%
+    g.fillStyle = css('--grid');
+    g.fillRect(0, top, w, Math.max(1, Math.round(r)));
+    g.fillRect(0, top + Math.round(ih / 2), w, Math.max(1, Math.round(r)));
+
+    if (histLen > 0) {
+      // Stacked areas: 💀 at the bottom, 🥹 on top. Painter's order: tallest sum first.
+      for (let L = 0; L < 4; L++) {
+        g.fillStyle = STAGE_COLOR[L];
+        g.beginPath();
+        g.moveTo(0, h);
+        for (let j = 0; j < histLen; j++) {
+          const o = ((start + j) % HIST) * 4;
+          let v = 0;
+          for (let k = L; k < 4; k++) v += hist[o + k];
+          g.lineTo(j * xs, h - (v / yMax) * ih);
+        }
+        g.lineTo(Math.max(0, histLen - 1) * xs, h);
+        g.closePath();
+        g.fill();
+      }
+    }
+
+    // y-axis label
+    const label = yMax.toLocaleString();
+    g.font = `700 ${Math.round(10 * r)}px system-ui, sans-serif`;
+    g.textBaseline = 'top';
+    const tw = g.measureText(label).width;
+    g.fillStyle = css('--board');
+    g.fillRect(0, top - 2 * r, tw + 8 * r, 14 * r);
+    g.fillStyle = css('--muted');
+    g.fillText(label, 4 * r, top);
+  }
+
+  // ---------- Stats / legend ----------
+  const legendN = [];
+  let shownGen = -1, shownPop = -1;
+  const shownCounts = [-1, -1, -1, -1];
+  function updateStats() {
+    if (gen !== shownGen) { $('gen').textContent = gen.toLocaleString(); shownGen = gen; }
+    const pop = N - counts[0];
+    if (pop !== shownPop) { $('pop').textContent = pop.toLocaleString(); shownPop = pop; }
+    for (let k = 0; k < 4; k++) {
+      if (counts[k + 1] !== shownCounts[k]) { legendN[k].textContent = counts[k + 1].toLocaleString(); shownCounts[k] = counts[k + 1]; }
+    }
+  }
+
+  // ---------- Frame loop (rAF, only while needed) ----------
+  let rafId = 0, lastT = 0, acc = 0;
+  function kick() { if (!rafId) rafId = requestAnimationFrame(frame); }
+  function frame(t) {
+    rafId = 0;
+    if (running) {
+      const dt = lastT ? Math.min(t - lastT, 200) : 0;
+      lastT = t;
+      acc += dt * speed / 1000;
+      let n = Math.floor(acc);
+      if (n > 0) {
+        acc -= n;
+        if (n > 8) { n = 8; acc = 0; }
+        for (let k = 0; k < n; k++) { step(); histPush(); }
+      }
+    }
+    if (fullRedraw || dirtyLen) render();
+    if (chartDirty) { drawChart(); chartDirty = false; }
+    updateStats();
+    if (running) kick();
+  }
+
+  function setRunning(v) {
+    running = v;
+    lastT = 0;
+    acc = 1; // take the first step right away
+    $('play').textContent = running ? '⏸ 停止' : '▶ 再生';
+    kick();
+  }
+
+  // ---------- Board size ----------
+  function resize(keep) {
+    dpr = window.devicePixelRatio || 1;
+    cp = Math.max(2, Math.round(cellCss * dpr));
+    const cs = cp / dpr;
+    const w = wrap.clientWidth;
+    const top = wrap.getBoundingClientRect().top + window.scrollY;
+    let h = window.innerHeight - top - 44;
+    if (window.innerWidth < 960) h = Math.min(h, w * 1.1);
+    h = Math.max(h, 240);
+    const nc = Math.max(8, Math.floor(w / cs));
+    const nr = Math.max(8, Math.floor(h / cs));
+
+    if (nc !== cols || nr !== rows) {
+      const oc = cols, or = rows, oCur = cur, oAge = age;
+      cols = nc; rows = nr; N = nc * nr;
+      cur = new Uint8Array(N); nxt = new Uint8Array(N); age = new Uint8Array(N);
+      colSum = new Uint8Array(nc);
+      dirty = new Int32Array(N); dirtyFlag = new Uint8Array(N); dirtyLen = 0;
+      if (keep && oc) {
+        const ox = Math.floor((nc - oc) / 2), oy = Math.floor((nr - or) / 2);
+        for (let y = 0; y < or; y++) {
+          const ny = y + oy;
+          if (ny < 0 || ny >= nr) continue;
+          for (let x = 0; x < oc; x++) {
+            const nx = x + ox;
+            if (nx < 0 || nx >= nc) continue;
+            const o = y * oc + x;
+            if (oCur[o]) { cur[ny * nc + nx] = 1; age[ny * nc + nx] = oAge[o]; }
+          }
+        }
+      }
+      recount();
+      histSetLatest();
+    }
+    for (const c of [bgCanvas, fgCanvas]) { c.width = cols * cp; c.height = rows * cp; }
+    board.style.width = (cols * cp / dpr) + 'px';
+    board.style.height = (rows * cp / dpr) + 'px';
+    drawGrid();
+    buildAtlas();
+    fullRedraw = true;
+    chartDirty = true;
+    kick();
+  }
+
+  // ---------- Patterns ----------
+  const PATTERNS = {
+    glider: ['.O.', '..O', 'OOO'],
+    lwss: ['.O..O', 'O....', 'O...O', 'OOOO.'],
+    pulsar: [
+      '..OOO...OOO..', '.............', 'O....O.O....O', 'O....O.O....O', 'O....O.O....O',
+      '..OOO...OOO..', '.............', '..OOO...OOO..', 'O....O.O....O', 'O....O.O....O',
+      'O....O.O....O', '.............', '..OOO...OOO..'],
+    gun: [
+      '........................O...........',
+      '......................O.O...........',
+      '............OO......OO............OO',
+      '...........O...O....OO............OO',
+      'OO........O.....O...OO..............',
+      'OO........O...O.OO....O.O...........',
+      '..........O.....O.......O...........',
+      '...........O...O....................',
+      '............OO......................'],
+    rpent: ['.OO', 'OO.', '.O.'],
+    acorn: ['.O.....', '...O...', 'OO..OOO'],
+  };
+  function placePattern(name) {
+    const p = PATTERNS[name];
+    if (!p) return;
+    const ph = p.length, pw = p[0].length;
+    if (pw > cols || ph > rows) { alert('盤面が小さすぎます。「大きさ」を小さくしてください。'); return; }
+    const ox = Math.floor((cols - pw) / 2), oy = Math.floor((rows - ph) / 2);
+    for (let y = 0; y < ph; y++) for (let x = 0; x < pw; x++) {
+      if (p[y][x] === 'O') setCell((oy + y) * cols + ox + x, 1);
+    }
+    histSetLatest();
+    kick();
+  }
+
+  // ---------- Editing with mouse / touch ----------
+  let painting = false, paintVal = 1, lx = -1, ly = -1;
+  function cellXY(e, clamp) {
+    const r = fgCanvas.getBoundingClientRect();
+    let x = Math.floor((e.clientX - r.left) / r.width * cols);
+    let y = Math.floor((e.clientY - r.top) / r.height * rows);
+    if (clamp) { x = Math.min(cols - 1, Math.max(0, x)); y = Math.min(rows - 1, Math.max(0, y)); }
+    else if (x < 0 || y < 0 || x >= cols || y >= rows) return null;
+    return [x, y];
+  }
+  fgCanvas.addEventListener('pointerdown', e => {
+    const p = cellXY(e, false);
+    if (!p) return;
+    const i = p[1] * cols + p[0];
+    painting = true;
+    paintVal = cur[i] ? 0 : 1;
+    setCell(i, paintVal);
+    [lx, ly] = p;
+    fgCanvas.setPointerCapture(e.pointerId);
+    histSetLatest();
+    kick();
+  });
+  fgCanvas.addEventListener('pointermove', e => {
+    if (!painting) return;
+    const [x, y] = cellXY(e, true);
+    if (x === lx && y === ly) return;
+    // fill the cells between the last and current position so fast drags leave no gaps
+    const n = Math.max(Math.abs(x - lx), Math.abs(y - ly));
+    for (let k = 1; k <= n; k++) {
+      const cx = Math.round(lx + (x - lx) * k / n), cy = Math.round(ly + (y - ly) * k / n);
+      setCell(cy * cols + cx, paintVal);
+    }
+    lx = x; ly = y;
+    histSetLatest();
+    kick();
+  });
+  const stopPaint = () => { painting = false; };
+  fgCanvas.addEventListener('pointerup', stopPaint);
+  fgCanvas.addEventListener('pointercancel', stopPaint);
+
+  // ---------- Skin UI ----------
+  const slotInputs = [], legendEm = [], presetBtns = [];
+  function buildSkinUI() {
+    const legend = $('legend'), slots = $('slots'), presets = $('presets');
+    for (let k = 0; k < 4; k++) {
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="sw" style="background:${STAGE_COLOR[k]}"></span><span class="em"></span><span class="age">${STAGE_LABEL[k]}</span><span class="n">0</span>`;
+      legendEm.push(li.querySelector('.em'));
+      legendN.push(li.querySelector('.n'));
+      legend.appendChild(li);
+
+      const slot = document.createElement('label');
+      slot.className = 'slot';
+      slot.innerHTML = `<span class="bar" style="background:${STAGE_COLOR[k]}"></span><input type="text" autocomplete="off" spellcheck="false" aria-label="${STAGE_LABEL[k]}の見た目"><span>${STAGE_LABEL[k]}</span>`;
+      const input = slot.querySelector('input');
+      input.addEventListener('input', () => {
+        const g = firstGrapheme(input.value);
+        if (!g) return;
+        if (input.value !== g) input.value = g;
+        if (skin[k] !== g) { skin[k] = g; applySkin(); }
+      });
+      input.addEventListener('focus', () => input.select());
+      input.addEventListener('blur', () => { input.value = skin[k]; });
+      slotInputs.push(input);
+      slots.appendChild(slot);
+    }
+    for (const p of PRESETS) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.innerHTML = `<span class="e">${p.skin.join('')}</span><span>${p.name}</span>`;
+      b.onclick = () => { skin = p.skin.slice(); applySkin(); };
+      presetBtns.push([b, p]);
+      presets.appendChild(b);
+    }
+    refreshSkinUI();
+  }
+  function refreshSkinUI() {
+    for (let k = 0; k < 4; k++) {
+      legendEm[k].textContent = skin[k];
+      if (document.activeElement !== slotInputs[k]) slotInputs[k].value = skin[k];
+    }
+    for (const [b, p] of presetBtns) b.classList.toggle('active', p.skin.every((e, k) => e === skin[k]));
+    $('logo').textContent = skin[1];
+  }
+  function applySkin() {
+    buildAtlas();
+    fullRedraw = true;
+    saveSkin();
+    refreshSkinUI();
+    kick();
+  }
+
+  // ---------- Controls ----------
+  $('play').onclick = () => setRunning(!running);
+  $('step').onclick = () => { setRunning(false); step(); histPush(); kick(); };
+  $('random').onclick = () => {
+    for (let i = 0; i < N; i++) {
+      const a = Math.random() < 0.25 ? 1 : 0;
+      cur[i] = a; age[i] = a;
+    }
+    gen = 0; recount(); histReset(); fullRedraw = true; kick();
+  };
+  $('clear').onclick = () => {
+    setRunning(false);
+    cur.fill(0); age.fill(0);
+    gen = 0; recount(); histReset(); fullRedraw = true; kick();
+  };
+  $('pattern').onchange = e => { placePattern(e.target.value); e.target.value = ''; };
+  $('speed').oninput = e => { speed = +e.target.value; $('speedOut').textContent = speed + '/秒'; };
+  $('size').oninput = e => { cellCss = +e.target.value; $('sizeOut').textContent = cellCss + 'px'; resize(true); };
+  document.addEventListener('keydown', e => {
+    const tag = e.target.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+    if (e.code === 'Space') { e.preventDefault(); setRunning(!running); }
+    else if (e.key === 'ArrowRight' || e.key === 'n') { setRunning(false); step(); histPush(); kick(); }
+  });
+  let rt;
+  window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => resize(true), 150); });
+
+  // ---------- Start ----------
+  buildSkinUI();
+  resize(false);
+  if (cols >= PATTERNS.gun[0].length && rows >= PATTERNS.gun.length) placePattern('gun');
+  else for (let i = 0; i < N; i++) { const a = Math.random() < 0.25 ? 1 : 0; cur[i] = a; age[i] = a; }
+  recount();
+  histReset();
+  kick();
+})();
+</script>
+</body>
+</html>
